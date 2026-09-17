@@ -1,6 +1,6 @@
 {
   "name": "@voyyaa/shared",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared Zod contracts, DTOs, types and trip state machine for VoyYa (single source of truth for backend and frontend clients).",
   "private": false,
   "type": "commonjs",
@@ -24,7 +24,8 @@
   "packageManager": "pnpm@10.24.0",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepare": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "zod": "^3.23.8"
