@@ -1,6 +1,6 @@
 {
   "name": "@voyyaa/shared",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Shared Zod contracts, DTOs, types and trip state machine for VoyYa (single source of truth for backend and frontend clients).",
   "private": false,
   "type": "commonjs",
