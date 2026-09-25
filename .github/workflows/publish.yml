@@ -16,6 +16,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: El tag debe coincidir con la versión del package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::El tag $GITHUB_REF_NAME apunta a un commit cuyo package.json declara $PKG_VERSION."
+            echo "::error::npm publica la versión del package.json, no el nombre del tag, así que esto publicaría $PKG_VERSION (o fallaría si ya existe)."
+            echo "::error::Etiqueta el commit que sube la versión, no uno anterior."
+            exit 1
+          fi
+
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
