@@ -10,6 +10,63 @@ guardarraíl 5: copia literal a `voyya-backend/packages/shared` y `voyya-mobile/
 > Las entradas 0.2.0 a 0.7.0 se **reconstruyeron el 2026-10-08** a partir de los ADRs dueños de cada contrato,
 > porque este archivo se quedó en el ciclo del viaje en curso. Donde el ADR no detalla el cambio, se dice.
 
+## [0.9.0] — 2026-10-08 · Varias empresas por municipio, tipo de servicio y catálogo DANE (sin etiquetar todavía)
+
+Origen: ADR-032 §7 (dueño del archivo nuevo `service-config.ts` y de los símbolos de `trips.ts` que cambia) y ADR-031 §6
+(integrado). Minor: hay dos rupturas de contrato (abajo). Orden de despliegue: **primero la API, después la consola y el
+móvil**; no se publica una consola 0.8.1 contra la API 0.9.0 ni una 0.9.0 contra la API anterior. `POST
+/assignments/:id/accept` conserva la respuesta 200 `{ result: 'already_taken' }` (MD-19).
+
+### Rompe
+
+- `contracts/affiliation.ts`: `ApproveCompanyDTO.commission_pct` pasa a **obligatorio** (`CommissionPct`, 0 a 50) y
+  `initial_fare` a opcional. Una consola 0.8.1 que aprueba recibe 400.
+- `contracts/affiliation.ts`: `CompanyProvisioningResult.fare_config_id` pasa a `nullable` (siempre `null`). Una consola
+  0.8.1 falla al validar la respuesta de aprobar.
+- Los productores (backend) deben rellenar los campos nuevos y obligatorios de las respuestas: `TripRequestStatus`
+  (`service_type`, `requested_company`), `AssignedDriverSummary.company`, `ConsoleSettings`, `CompanyProfile`,
+  `PlatformCompanyRow`, `PlatformCompanyDetail`, `AffiliationMunicipality` y `AffiliationMunicipalityListResponse`.
+
+### Agregado
+
+- `contracts/trips.ts`: `ActivatableServiceType` (`taxi`, `comfort`, `delivery`; `motorcycle` imposible),
+  `ActiveServiceTypes`, `CompanyPublicName` (2 a 60), `CompanyRef`, `TripServiceOptionsQuery`, `TripCompanyOption`,
+  `TripServiceOption`, `TripServiceMunicipality`, `TripServiceOptionsResponse`, `CreateTripRequestDTO.requested_company_id`
+  (opcional o `null` = "Cualquiera"), `TripRequestStatus.service_type` y `requested_company`, `AssignedDriverSummary.company`,
+  y `TripErrorCode` += `SERVICE_NOT_AVAILABLE`, `COMPANY_NOT_AVAILABLE`.
+- `contracts/service-config.ts` (archivo nuevo, exportado en `index.ts`): tarifa del municipio versionada
+  (`MunicipalityFare`, `MunicipalityFareHistory`, `UpdateMunicipalityFareDTO`, `OfficialReference`), parámetros del municipio
+  (`OperationalParamsValues`, `MunicipalityOperationalParams`, su historial y `UpdateMunicipalityOperationalParamsDTO`),
+  comisión por empresa (`CompanyCommission`, su historial, `UpdateCompanyCommissionDTO`, `PlatformCommissionRow` y su lista),
+  `PlatformServiceConfigRow` y su lista, `ServiceConfigErrorCode` y `ServiceConfigError`.
+- `contracts/admin.ts`: `CommissionPct` (0 a 50, paso 0,01), `ConsoleSettings` ampliado y de solo lectura
+  (`read_only: true`, `service_type`, marca oficial, los nueve parámetros) y `AdminErrorCode` += `SETTINGS_MANAGED_BY_PLATFORM`.
+- `contracts/affiliation.ts`: `DaneCode`, `MunicipalityCatalogSource`, `AffiliationMunicipality` (`dane_code`,
+  `department_code`, `has_active_companies`, `coverage_active`), `AffiliationMunicipalityListResponse` (`source`,
+  `active_service_types`), `CreateAffiliationApplicationDTO` (`public_name`, `service_types` por defecto `['taxi']`, sin
+  repetidos), `CompanyProfile` y `PlatformCompanyRow` (`display_name`, `service_types`, cobertura, `coverage_pending_since`),
+  `PlatformCompanyDetail` (`public_name`, empresas activas del municipio, tarifas, comisión), `PlatformCompanyQuery.municipality_id`,
+  `CompanyProvisioningResult` (`municipality_fares`, `company_commission_id`), `CompanyDecisionResponse.municipality_coverage_active`,
+  `AffiliationErrorCode` += `SERVICE_NOT_AVAILABLE` y `PlatformErrorCode` += `MUNICIPALITY_FARE_REQUIRED`, `SERVICE_NOT_AVAILABLE`.
+
+### Cambiado
+
+- `QuoteFareDTO.service_type` y `CreateTripRequestDTO.service_type` pasan a `ActivatableServiceType`: `motorcycle` responde 400
+  en la validación (MD-17). Ningún cliente lo enviaba.
+- `ApproveCompanyInitialFare` pierde `commission_pct` y `ApproveCompanyDTO` pierde `acknowledge_routing_limitation`
+  (no rompe: el pipe de validación no es estricto).
+
+### Obsoleto (se retira en 1.0)
+
+- `FareBreakdown.commission` vale 0 en las respuestas al pasajero; `AffiliationMunicipality.already_covered`;
+  `PlatformCompanyRow.municipality_already_covered`; `PlatformCompanyDetail.municipality_active_company_name`;
+  `CompanyDecisionResponse.acknowledged_routing_limitation` (siempre `false`); `PlatformErrorCode.MUNICIPALITY_ALREADY_COVERED`
+  (ya no se emite); `UpdateConsoleSettingsDTO` (el endpoint responde 403).
+
+### Pruebas
+
+- Primeras pruebas de contrato del paquete: `src/contracts.test.ts` con el ejecutor nativo de Node (`pnpm test`).
+
 ## [0.8.1] — 2026-10-08 · Remediación de la Verificación del "Cierre del MVP" (sin etiquetar todavía)
 
 Origen: prueba integrada (BUG-1, BUG-4) y `docs/security/reporte-cierre-mvp.md` (CM-10, CM-11). Dueños: ADR-030
