@@ -2,6 +2,131 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/). Fechas en AAAA-MM-DD.
 
+Versionado: antes de 1.0, la **minor** señala una ruptura de contrato (ADR-012 §8, criterio aplicado desde 0.3.0)
+y la **patch**, un endurecimiento o un valor nuevo que no rompe a nadie. Cada versión se propaga por el
+guardarraíl 5: copia literal a `voyya-backend/packages/shared` y `voyya-mobile/packages/shared`, y el pin de
+`voyya-admin` sube cuando la etiqueta `vX.Y.Z` está publicada en GitHub Packages (ADR-016).
+
+> Las entradas 0.2.0 a 0.7.0 se **reconstruyeron el 2026-10-08** a partir de los ADRs dueños de cada contrato,
+> porque este archivo se quedó en el ciclo del viaje en curso. Donde el ADR no detalla el cambio, se dice.
+
+## [0.8.0] — 2026-10-08 · Ciclo "Cierre del MVP" (sin etiquetar todavía)
+
+Dueños: ADR-027 (conciliación), ADR-028 (PIN), ADR-029 (consentimiento y retención), ADR-030 (viaje activo).
+Diseño consolidado en `docs/specs/diseno-cierre-mvp.md`. **Rompe** contratos: por eso es minor.
+
+### Agregado
+
+- `contracts/location-notice.ts` (archivo nuevo): texto canónico del aviso de ubicación por audiencia
+  (`LOCATION_NOTICES`, `canonicalLocationNoticeText`), datos del Responsable con marcadores (`DATA_CONTROLLER`),
+  `TRIP_COORDINATES_RETENTION_DAYS = 90`, `DRIVER_LOCATION_RETENTION_MAX_HOURS = 13`, `hasLegalPlaceholders`.
+- `contracts/consent.ts`: `NoticeAudience`, `RevokeConsentDTO`, `ConsentState`, `ConsentStatus`,
+  `ConsentStatusListResponse`, `ConsentErrorCode` (`NOTICE_VERSION_UNKNOWN`, `NOTICE_AUDIENCE_NOT_ALLOWED`),
+  `ConsentError`, `CONSENT_EVENTS.CONSENT_REVOKED` y `ConsentRevokedEvent`.
+- `contracts/auth.ts`: `DRIVER_PIN_LENGTH = 6`, `NewDriverPin`, `ChangeDriverPinDTO`, `isWeakDriverPin`,
+  `isPinFromPersonalData`, `JwtAccessPayload.pin_change_required`, `SessionUser.pin_change_required`
+  (por defecto `false`), `AuthErrorCode` += `PIN_CHANGE_REQUIRED`, `TEMPORARY_PIN_EXPIRED`, `PIN_TOO_WEAK`;
+  `DRIVER_CREDENTIALS_RESET_EVENT` y `DriverCredentialsResetEvent`.
+- `contracts/trips.ts`: `ActiveTripRef`, `ActiveTripResponse`, `TripError.active_trip` (opcional; lo lleva el
+  409 `ACTIVE_TRIP_REQUEST_EXISTS`).
+- `contracts/driver.ts`: `DriverErrorCode` += `LOCATION_CONSENT_REQUIRED`.
+- `contracts/admin.ts`: `CalendarDate`, `isCalendarDate`, `addDays`, `daysBetween`, `isMonday`, `weekStartOf`,
+  `SETTLEMENT_TIME_ZONE`, `SETTLEMENT_MAX_RANGE_DAYS = 31`, `settlementToday`, `settlementWeekOf`,
+  `SettlementRemittanceSummary`, `SETTLEMENT_CSV_COLUMNS`, `SETTLEMENT_CSV_CONTENT_TYPE`, `RemittanceEntryKind`,
+  `SettlementWeekStart`, `RecordRemittanceDTO`, `RemittanceActor`, `SettlementRemittanceEntry`,
+  `RemittanceResult`, `RemittanceHistoryQuery`, `RemittanceHistoryResponse`, `DriverPinStatus`;
+  `OpsDriverRow.pin_status` y `OpsDriverRow.temporary_pin_expires_at`; `CreatedDriver` y
+  `ResendDriverPinResponse` ganan `temporary_pin_expires_at`; `AdminErrorCode` += `DRIVER_HAS_ACTIVE_TRIP`
+  (el backend ya lo emitía; la consola lo detectaba por el 409), `NOTHING_TO_REMIT`,
+  `SETTLEMENT_BALANCE_CHANGED`, `REMITTANCE_NOT_FOUND`, `REMITTANCE_NOT_REVERSIBLE`.
+- `index.ts`: `export * from './contracts/location-notice';`.
+
+### Cambiado (rompe)
+
+- `contracts/admin.ts`: `SettlementReportQuery` pierde `status` y valida rango (desde ≤ hasta, máximo 31 días,
+  fechas existentes). `SettlementReportRow` pierde `total_cash_income` y `membership_fee_due` (D-1: no hay cuota
+  fija) y gana `cash_collected`, `commission`, `driver_net`, `amount_to_remit`, `pending_cash_trip_count`,
+  `pending_cash_amount`, `remittance`. `SettlementReportTotals` igual, más `remitted_amount` y
+  `remittance_balance`. `SettlementReportResponse` gana `time_zone`, `week_start` e `in_progress`.
+- `contracts/admin.ts`: `OpsTripDetail.pickup_address` y `dropoff_address` pasan a `nullable` (purga a 90 días).
+- `contracts/driver.ts`: `PendingCashTrip.dropoff_address` pasa a `nullable` (misma razón).
+- `contracts/consent.ts`: `LOCATION_NOTICE_VERSION` sube a `location-notice-v2`; `ConsentRecord` y
+  `ConsentListResponse` se sustituyen por `ConsentStatus` y `ConsentStatusListResponse` (`GET /consents`
+  devuelve estado, no asientos).
+
+### Corregido
+
+- `domain/pii.ts`: `LABELLED_ID` tachaba rutas y palabras (`/pin POST}` → `pin [redacted]`). Ahora exige un
+  separador explícito (`:`, `=`, `#`, con comillas opcionales, o espacio), un valor que **contenga un dígito**, y
+  no se dispara si la etiqueta viene detrás de `/` o `.`. Casos en ADR-023 (nota de 2026-10-08) y en
+  `docs/specs/diseno-cierre-mvp.md` §3.
+
+## [0.7.0] — 2026-09-25 · Observabilidad (ADR-023)
+
+### Agregado
+
+- `domain/pii.ts` (archivo nuevo): `redactPii` y `redactPiiDeep`, únicos responsables de tachar PII en logs y
+  en eventos de Sentry. Minor aditivo.
+
+## [0.6.0] — 2026-09-25 · Notificación push al conductor (ADR-022)
+
+### Agregado
+
+- `contracts/push.ts` (archivo nuevo): registro y revocación del token de dispositivo, payload de la
+  notificación de oferta (`PushNotificationData`, unión discriminada) y `ANDROID_ASSIGNMENT_CHANNEL_ID`.
+  Minor aditivo.
+
+## [0.5.1] · [0.5.2] — 2026-09 · Remediación del ciclo de afiliación
+
+Parches sin ADR propio (remediaciones de Verificar del ciclo de afiliación). Ningún ADR lista su contenido
+símbolo a símbolo; lo que consta en `docs/security/reporte-afiliacion-empresas.md` es el código
+`DOCUMENT_STORAGE_UNAVAILABLE` (503 de almacenamiento de documentos) en `admin.ts` y `affiliation.ts`. El
+detalle exacto vive en el historial git de este repositorio.
+
+## [0.5.0] — 2026-09-18 · Afiliación de empresas (ADR-021)
+
+### Agregado
+
+- `contracts/documents.ts` y `contracts/affiliation.ts` (archivos nuevos): carga de documentos, solicitud de
+  afiliación, revisión de la plataforma y `CompanyDecision` (incluye `credentials_reissued`).
+- `contracts/auth.ts`: `Role` gana `platform_admin` (fuera de `TENANT_SCOPED_ROLES`).
+- `contracts/admin.ts`: documentos del conductor en el alta, `FleetQuota` y sus códigos de error.
+
+### Cambiado (rompe)
+
+- `CreateDriverDTO` exige `documents`.
+
+## [0.4.0] — 2026-09-18 · Geolocalización de las apps (ADR-019)
+
+### Agregado
+
+- `contracts/consent.ts` (archivo nuevo): `ConsentPurpose`, `NoticeVersion`, `LOCATION_NOTICE_VERSION`,
+  `GrantConsentDTO`, `ConsentRecord`, `ConsentListResponse`.
+
+## [0.3.1] — 2026-09-18 · Tarifa de la empresa (ADR-018)
+
+### Cambiado
+
+- `BaseFareCop` gana el suelo `min(1_000)`; endurecimiento sin ruptura.
+
+## [0.3.0] — 2026-09-17 · Consola de administración (ADR-012)
+
+### Agregado
+
+- `contracts/admin.ts` completo (alta de conductor, PIN, configuración, cola en vivo, flota, conciliación
+  especificada y diferida) y el fragmento de sesión de `auth.ts` (`SessionTenant`).
+
+### Cambiado (rompe)
+
+- `SessionUser` lleva el tenant de la sesión.
+
+## [0.2.0] — 2026-09-16 · Fin de la cuarta copia (ADR-016)
+
+### Cambiado
+
+- Primer paquete publicable: `voyya-admin` deja de vendorizar los contratos y consume `@voyyaa/shared` con
+  versión fijada.
+
 ## [Sin publicar] — 2026-09-16 · Ciclo "Viaje en curso y cobro en efectivo"
 
 Contrato consumido hoy como copia sincronizada por `voyya-backend`, `voyya-mobile` y `voyya-admin` (`workspace:*`
