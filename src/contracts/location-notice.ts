@@ -27,7 +27,7 @@ export interface LocationNotice {
 const controllerRow: NoticeRow = {
   key: 'controller',
   label: 'Quién trata tus datos',
-  value: `${DATA_CONTROLLER.legal_name}, NIT ${DATA_CONTROLLER.tax_id}, con domicilio en ${DATA_CONTROLLER.address}.`,
+  value: `${DATA_CONTROLLER.legal_name}, NIT ${DATA_CONTROLLER.tax_id}, con domicilio en ${DATA_CONTROLLER.address}, es el responsable de tus datos.`,
 };
 
 const rightsRow: NoticeRow = {
@@ -35,8 +35,8 @@ const rightsRow: NoticeRow = {
   label: 'Tus derechos',
   value:
     'Puedes conocer, actualizar, rectificar y suprimir tus datos, revocar esta autorización, pedir prueba ' +
-    `de ella y quejarte ante la Superintendencia de Industria y Comercio. Escríbenos a ${DATA_CONTROLLER.privacy_email}: ` +
-    'respondemos consultas en 10 días hábiles y reclamos en 15 días hábiles.',
+    `de que la diste y quejarte ante la Superintendencia de Industria y Comercio. Escríbenos a ${DATA_CONTROLLER.privacy_email}: ` +
+    'respondemos consultas en máximo 10 días hábiles y reclamos en máximo 15 días hábiles.',
 };
 
 const moreRow: NoticeRow = {
@@ -62,36 +62,38 @@ const DRIVER_LOCATION_NOTICE: LocationNotice = {
       key: 'purpose',
       label: 'Para qué',
       value:
-        'Para asignarte el viaje más cercano, calcular el tiempo de llegada que ve el pasajero y para que tu ' +
-        'empresa vea si tu ubicación está al día durante el turno.',
+        'Para ofrecerte primero los viajes más cercanos, calcular el tiempo de llegada que ve el pasajero y que ' +
+        'tu empresa vea si tu ubicación está al día durante el turno.',
     },
     {
       key: 'optional',
       label: 'Si no la compartes',
-      value: 'Compartirla es voluntario, pero sin ella no puedes ponerte en turno.',
+      value: 'Compartirla es voluntario. Sin ella no puedes ponerte en turno ni recibir viajes.',
     },
     {
       key: 'sharing',
       label: 'Con quién se comparte',
       value:
-        'Con tu empresa afiliada. El pasajero no ve tu ubicación: ve el tiempo estimado de llegada. Nuestros ' +
-        'proveedores de alojamiento y mapas (Railway y Mapbox) la procesan por cuenta nuestra, como explica la política.',
+        'Tu empresa afiliada solo ve si tu ubicación está al día, no dónde estás. El pasajero tampoco ve dónde ' +
+        'estás: solo ve el tiempo estimado en que llegas. Nuestro proveedor de alojamiento (Railway) guarda los ' +
+        'datos por cuenta nuestra, como explica la política.',
     },
     {
       key: 'retention',
       label: 'Cuánto la guardamos',
       value:
-        'Guardamos solo tu última ubicación. Se borra cuando cierras turno; si no lo cierras, se borra a más ' +
-        `tardar ${DRIVER_LOCATION_RETENTION_MAX_HOURS} horas después de tu último reporte.`,
+        'Guardamos solo tu última ubicación, no un historial. Se borra cuando cierras turno; si no lo cierras, ' +
+        `se borra a más tardar ${DRIVER_LOCATION_RETENTION_MAX_HOURS} horas después de tu último reporte.`,
     },
     {
       key: 'withdrawal',
       label: 'Cómo dejas de compartirla',
       value:
-        'En «Privacidad de mi ubicación», con «Dejar de compartir mi ubicación»: borramos tu última ubicación en ' +
-        'ese momento y sales de turno; si tienes un viaje en curso, lo terminas y sales de turno al cerrarlo. Si ' +
-        'en cambio quitas el permiso en los ajustes del teléfono, dejamos de recibir tu ubicación y la guardada se ' +
-        `borra a más tardar ${DRIVER_LOCATION_RETENTION_MAX_HOURS} horas después de tu último reporte.`,
+        'En «Privacidad de mi ubicación», con «Dejar de compartir mi ubicación»: borramos tu última ubicación ' +
+        'al instante y sales de turno. Si tienes un viaje en curso, el viaje sigue y sales de turno al terminarlo. ' +
+        'Para volver a turno tendrás que aceptar este aviso otra vez. Si en cambio quitas el permiso en los ' +
+        'ajustes del teléfono, dejamos de recibir tu ubicación y la que quedó guardada se borra a más tardar ' +
+        `${DRIVER_LOCATION_RETENTION_MAX_HOURS} horas después de tu último reporte.`,
     },
     rightsRow,
     moreRow,
@@ -115,21 +117,24 @@ const PASSENGER_LOCATION_NOTICE: LocationNotice = {
       key: 'purpose',
       label: 'Para qué',
       value:
-        'Para comprobar que estás dentro de la zona de servicio, ubicarte en el mapa, cotizar tu viaje con su ' +
-        'tiempo estimado y entregar tu punto de recogida al conductor asignado.',
+        'Para comprobar que estás dentro de la zona de servicio, ubicarte en el mapa, calcular tu tarifa y el ' +
+        'tiempo estimado, y darle tu punto de recogida al conductor.',
     },
     {
       key: 'optional',
       label: 'Si no la compartes',
-      value: 'Compartirla es voluntario: sin ella puedes pedir tu taxi marcando el punto en el mapa.',
+      value:
+        'Compartirla es voluntario. Sin ella puedes pedir tu taxi marcando el punto de recogida en el mapa.',
     },
     {
       key: 'sharing',
       label: 'Con quién se comparte',
       value:
-        'Con el conductor asignado (tu punto de recogida y destino y, mientras va por ti, tu número de teléfono) ' +
-        'y con la empresa de taxis que atiende tu viaje. Nuestros proveedores de alojamiento y mapas (Railway y ' +
-        'Mapbox) la procesan por cuenta nuestra, como explica la política.',
+        'Los conductores a quienes se les ofrece tu viaje ven tu punto de recogida y el barrio de destino. El que ' +
+        'lo acepta ve además tu destino y tu número de teléfono mientras dura el viaje. La empresa de taxis que ' +
+        'atiende tu viaje también ve tus puntos de recogida y destino. Nuestro proveedor de alojamiento (Railway) ' +
+        'guarda los datos por cuenta nuestra y Mapbox, que dibuja el mapa, puede recibir la zona que estás ' +
+        'mirando (puede coincidir con tu ubicación), como explica la política.',
     },
     {
       key: 'retention',
@@ -144,10 +149,11 @@ const PASSENGER_LOCATION_NOTICE: LocationNotice = {
       key: 'withdrawal',
       label: 'Cómo dejas de compartirla',
       value:
-        'En «Privacidad de mi ubicación», con «Dejar de usar mi ubicación»: dejamos de leer tu GPS y marcarás el ' +
-        'punto en el mapa. Tus viajes anteriores no se borran por esto: sus coordenadas exactas se eliminan a los ' +
-        `${TRIP_COORDINATES_RETENTION_DAYS} días y puedes pedir que se eliminen antes escribiendo al correo de este ` +
-        'aviso. Para quitar también el permiso del sistema, hazlo en los ajustes de tu teléfono.',
+        'En «Privacidad de mi ubicación», con «Dejar de usar mi ubicación»: dejamos de leer tu GPS y marcarás tu ' +
+        'punto de recogida en el mapa. Un viaje en curso sigue igual. Tus viajes anteriores no se borran por esto: ' +
+        `sus coordenadas exactas se eliminan a los ${TRIP_COORDINATES_RETENTION_DAYS} días, y puedes pedir que se ` +
+        'eliminen antes escribiendo al correo de este aviso. Para quitar también el permiso del sistema, hazlo en ' +
+        'los ajustes de tu teléfono.',
     },
     rightsRow,
     moreRow,
