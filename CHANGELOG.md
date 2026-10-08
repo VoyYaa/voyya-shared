@@ -10,6 +10,78 @@ guardarraíl 5: copia literal a `voyya-backend/packages/shared` y `voyya-mobile/
 > Las entradas 0.2.0 a 0.7.0 se **reconstruyeron el 2026-10-08** a partir de los ADRs dueños de cada contrato,
 > porque este archivo se quedó en el ciclo del viaje en curso. Donde el ADR no detalla el cambio, se dice.
 
+## [0.8.1] — 2026-10-08 · Remediación de la Verificación del "Cierre del MVP" (sin etiquetar todavía)
+
+Origen: prueba integrada (BUG-1, BUG-4) y `docs/security/reporte-cierre-mvp.md` (CM-10, CM-11). Dueños: ADR-030
+(enmienda), ADR-027 (enmienda), ADR-029 (enmienda 2), ADR-023 (`pii.ts`). Patch: ningún consumidor pierde un
+campo ni un valor; los productores (backend) **deben** rellenar los dos campos nuevos de `TripRequestStatus`
+(el tipo no compila sin ellos). Orden de despliegue: backend antes que las apps, que parsean la respuesta.
+
+### Agregado
+
+- `contracts/trips.ts`: `TripRequestStatus.free_cancellation_until` (`string | null`, ISO-8601 UTC) y
+  `TripRequestStatus.server_time` (ISO-8601 UTC). También los recibe `ActiveTripResponse.active_trip`. Regla en
+  ADR-030, enmienda 2026-10-08 (BUG-1).
+- `contracts/admin.ts`: `AdminErrorCode` += `SETTLEMENT_WEEK_IN_PROGRESS` (`409` al marcar como remitida una
+  semana que no ha terminado; ADR-027, enmienda 2026-10-08, BUG-4).
+- `contracts/auth.ts`: `AuthErrorCode` += `INVALID_DATA` (lo emitía ya `ZodValidationPipe`); `ValidationIssue`
+  (`{ field, error }`, `field` puede ser `''` en un refine de raíz) y `AuthError.details` (opcional, solo en
+  `INVALID_DATA`). Sustituye el esquema local que la app del conductor usaba para leer el 400.
+
+### Cambiado
+
+- `contracts/location-notice.ts` (CM-11): en la fila «Qué usamos» de **ambas** audiencias, "La ubicación
+  aproximada de tu teléfono (unos 100 metros)" pasa a "La ubicación de tu teléfono, con una precisión de hasta
+  100 metros". Nada más cambia en el texto. **`LOCATION_NOTICE_VERSION` sigue en `location-notice-v2`**:
+  ninguna base de producción ha registrado v2 (ADR-029, enmienda 2). Consecuencia: toda base de desarrollo o
+  prueba que ya arrancó la API con 0.8.0 tiene la huella vieja de v2 y **el arranque fallará** hasta
+  recrearla (`docs/VoyYa/16-deploy.md`, Paso 1, nota CM-11).
+- `contracts/location-notice.ts`: Datos del Responsable (D-4) completados; NIT en trámite. `DATA_CONTROLLER`
+  pasa a `tax_id: 'en trámite'`, `address: 'Calle 38B Sur # 45B-31'`, `privacy_email:
+  'jhonnier98t@gmail.com'`, `privacy_policy_url: 'https://www.voyya.website/privacy-policy'`;
+  `hasLegalPlaceholders` es falso en ambas audiencias. Sigue en `location-notice-v2`; el primer arranque en
+  producción con 0.8.1 la fija, y el NIT definitivo exigirá `location-notice-v3` (ADR-029, enmienda 2).
+
+### Corregido
+
+- `domain/pii.ts` (CM-10): `LABELLED_ID` amplía etiquetas (`national_id`/`nationalId`, `current_pin`/
+  `currentPin`, `new_pin`/`newPin`, `CC`, `C.C.`) y acepta valores en grupos de dígitos separados por un
+  espacio (`71 000 001`, `48 29 13`). Se conservan las reglas de 0.8.0: separador explícito, valor con al menos
+  un dígito, nunca detrás de `/` o `.`, y un valor aislado de menos de 3 caracteres no se tacha. El fin de la
+  etiqueta pasa de `\b` a `(?![A-Za-z0-9_])` para que `C.C.` funcione; un grupo de dígitos solo se suma al valor
+  si termina limpio (no se come el año de `2026-10-08`).
+
+#### Casos de `redactPii` (0.8.1) — `pruebas` los convierte en aserciones exactas
+
+| Entrada | Salida | Por qué |
+|---|---|---|
+| `national_id=71000001` | `national_id=[redacted]` | etiqueta nueva |
+| `{"national_id":"71000001"}` | `{"national_id":"[redacted]"}` | separador con comillas |
+| `nationalId: 71000001` | `nationalId: [redacted]` | variante camelCase |
+| `current_pin=482913&new_pin=591027` | `current_pin=[redacted]&new_pin=[redacted]` | etiquetas nuevas; `&` corta el valor |
+| `{"current_pin":"482913","new_pin":"591027"}` | `{"current_pin":"[redacted]","new_pin":"[redacted]"}` | |
+| `new_pin 482913` | `new_pin [redacted]` | separador espacio |
+| `CC 71000001` | `CC [redacted]` | etiqueta nueva |
+| `C.C. 71.000.001` | `C.C. [redacted]` | etiqueta con puntos |
+| `cédula 71 000 001` | `cédula [redacted]` | grupos de dígitos con espacio |
+| `pin: 48 29 13` | `pin: [redacted]` | grupos de dígitos con espacio |
+| `Cédula: 71 000 001 registrada` | `Cédula: [redacted] registrada` | la palabra siguiente no se come |
+| `pin=482913 2026-10-08` | `pin=[redacted] 2026-10-08` | el grupo `2026` no termina limpio |
+| `VoyYa · PIN 482913. Ingresa con tu número de cédula y este PIN.` | `VoyYa · PIN [redacted] Ingresa con tu número de cédula y este PIN.` | sin cambio respecto de 0.8.0 |
+| `{route: /pin POST}` | sin cambios | detrás de `/`; `POST` sin dígitos (corrección de 0.8.0) |
+| `POST /auth/driver/pin} 403` | sin cambios | detrás de `/` |
+| `/admin/drivers/5/pin/resend` | sin cambios | detrás de `/` y sin separador |
+| `{"field":"new_pin","error":"El PIN debe tener 6 dígitos"}` | sin cambios | sin separador tras `new_pin`; "debe" sin dígitos |
+| `pin_delivered_at=2026-10-08` | sin cambios | `pin_` no termina la etiqueta |
+| `pin_must_change=true` | sin cambios | ídem |
+| `access 2026` | sin cambios | `cc` dentro de palabra |
+| `pin 12` | sin cambios | valor aislado de 2 caracteres |
+| `pin 12 veces` | sin cambios | `veces` no es grupo de dígitos |
+| `licencia vencida 2026` | sin cambios | el valor que sigue (`vencida`) no tiene dígitos |
+| `PIN [redacted]` | sin cambios | idempotente |
+| `assignment=412 fare=8000` | sin cambios | sin etiqueta (ADR-023) |
+| `driver.national_id=71000001` | **sin cambios** | límite conocido: detrás de `.` no se dispara (regla de 0.8.0). Ese caso es un objeto, y lo cubre `REDACT_KEYS` de pino, no esta regla |
+
 ## [0.8.0] — 2026-10-08 · Ciclo "Cierre del MVP" (sin etiquetar todavía)
 
 Dueños: ADR-027 (conciliación), ADR-028 (PIN), ADR-029 (consentimiento y retención), ADR-030 (viaje activo).
