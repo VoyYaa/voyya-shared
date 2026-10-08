@@ -201,7 +201,7 @@ describe('trip outputs', () => {
 });
 
 describe('accept assignment result', () => {
-  it('keeps the 200 already_taken shape the installed driver app understands', () => {
+  it('keeps the already_taken body, served with 409 (ADR-032 D-1)', () => {
     const parsed = AcceptAssignmentResult.parse({
       result: 'already_taken',
       message: 'Otro conductor tomó el viaje',
@@ -276,6 +276,25 @@ describe('public name and service types in affiliation', () => {
     assert.equal(CompanyPublicName.safeParse('a').success, false);
     assert.equal(CompanyPublicName.safeParse('  a  ').success, false);
     assert.equal(CompanyPublicName.safeParse('a'.repeat(61)).success, false);
+  });
+
+  it('rejects control, format, bidirectional and zero-width characters in a public name', () => {
+    const codePoints = [0x202e, 0x200b, 0x200d, 0x2060, 0xfeff, 0x0000, 0x000a, 0x0009, 0x200f, 0x2066, 0x180e];
+    for (const codePoint of codePoints) {
+      const name = `Taxis${String.fromCodePoint(codePoint)}Yarumal`;
+      assert.equal(CompanyPublicName.safeParse(name).success, false, codePoint.toString(16));
+    }
+  });
+
+  it('normalizes a public name to NFC', () => {
+    const decomposed = `Cafe${String.fromCodePoint(0x0301)} Taxis`;
+    const parsed = CompanyPublicName.parse(decomposed);
+    assert.equal(parsed, `Caf${String.fromCodePoint(0x00e9)} Taxis`);
+    assert.equal(parsed.length, 10);
+  });
+
+  it('keeps accents, the enye and inner spaces in a public name', () => {
+    assert.equal(CompanyPublicName.safeParse(`Taxis Ni${String.fromCodePoint(0x00f1)}o & Cia.`).success, true);
   });
 
   it('makes public_name optional and defaults service_types to taxi', () => {
