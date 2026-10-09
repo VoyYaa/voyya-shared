@@ -10,6 +10,19 @@ guardarraíl 5: copia literal a `voyya-backend/packages/shared` y `voyya-mobile/
 > Las entradas 0.2.0 a 0.7.0 se **reconstruyeron el 2026-10-08** a partir de los ADRs dueños de cada contrato,
 > porque este archivo se quedó en el ciclo del viaje en curso. Donde el ADR no detalla el cambio, se dice.
 
+## [0.9.1] — 2026-10-09 · Hotfix F-02: detalle de PostgreSQL fuera de los logs y de Sentry (sin etiquetar todavía)
+
+Origen: ADR-033 §1.5 (C-2) y §8.0, paso 0. Patch: no cambia ningún tipo ni esquema; endurece el comportamiento de
+`redactPii` y `redactPiiDeep` en `domain/pii.ts`.
+
+### Cambia
+- `redactPii` quita el detalle de PostgreSQL que Prisma copia en los errores de restricción: `Failing row contains (…)` pasa a
+  `Failing row contains ([redacted])`, `Key (…)=(…)` pasa a `Key ([redacted])=([redacted])` y las líneas `DETAIL: …` pasan a
+  `DETAIL: [redacted]`. Se detienen en el fin de línea o en un `
+` escapado de un JSON, para no comerse el `stack`.
+- `redactPiiDeep` ahora recorre también las instancias de `Error` (`name`, `message`, `stack` y propiedades propias, como
+  `meta`) y deja intactos los objetos que no son planos (`Date`, `Buffer`…), que antes se convertían en `{}`.
+
 ## [0.9.0] — 2026-10-08 · Varias empresas por municipio, tipo de servicio y catálogo DANE (sin etiquetar todavía)
 
 Origen: ADR-032 §7 (dueño del archivo nuevo `service-config.ts` y de los símbolos de `trips.ts` que cambia) y ADR-031 §6
