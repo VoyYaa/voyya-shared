@@ -10,6 +10,20 @@ import {
   ApproveCompanyDTO,
   AssignedDriverSummary,
   CommissionPct,
+  DRIVER_LOCATION_SHARING_NOTICE_VERSIONS,
+  DriverTrackingView,
+  DriverTripView,
+  LOCATION_NOTICE_VERSION,
+  OpsQueueRow,
+  OpsTripDetail,
+  OpsTripTimeline,
+  ReportDriverLocationResult,
+  StartCode,
+  StartTripDTO,
+  TripError,
+  canonicalLocationNoticeText,
+  driverTrackingView,
+  hasLegalPlaceholders,
   CompanyPublicName,
   CreateAffiliationApplicationDTO,
   CreateTripRequestDTO,
@@ -429,5 +443,145 @@ describe('municipality fare and operational params', () => {
     assert.equal(update({ search_radius_km: 5 }), false);
     assert.equal(update({ max_auto_retries: 11 }), false);
     assert.equal(update({ location_stale_min: 0 }), true);
+  });
+});
+
+describe('start code and driver tracking', () => {
+  it('accepts only four digits as a start code', () => {
+    for (const valid of ['0042', '1234', '0000'])
+      assert.equal(StartCode.safeParse(valid).success, true);
+    for (const invalid of ['12a4', '12345', '123', ''])
+      assert.equal(StartCode.safeParse(invalid).success, false);
+    assert.equal(StartTripDTO.safeParse({}).success, true);
+    assert.equal(StartTripDTO.safeParse({ start_code: '0042' }).success, true);
+    assert.equal(StartTripDTO.safeParse({ start_code: 'abcd' }).success, false);
+  });
+
+  it('knows the three start code errors and their details', () => {
+    for (const code of ['START_CODE_REQUIRED', 'START_CODE_INVALID', 'START_CODE_BLOCKED'])
+      assert.equal(TripErrorCode.safeParse(code).success, true);
+    const invalid = {
+      code: 'START_CODE_INVALID',
+      message: 'x',
+      attempts_remaining: 4,
+    };
+    assert.equal(TripError.parse(invalid).attempts_remaining, 4);
+    const blocked = {
+      code: 'START_CODE_BLOCKED',
+      message: 'x',
+      blocked_at: '2026-10-09T10:00:00Z',
+    };
+    assert.equal(TripError.parse(blocked).blocked_at, '2026-10-09T10:00:00Z');
+    assert.equal(TripError.safeParse({ ...invalid, attempts_remaining: 0 }).success, false);
+    assert.equal(TripError.safeParse({ ...invalid, attempts_remaining: 5 }).success, false);
+  });
+
+  const tracking = (windowAge: number, age: number | null) => ({
+    window_age_sec: windowAge,
+    stale_after_sec: 45,
+    hide_after_sec: 300,
+    position: age === null ? null : { lat: 6.96, lng: -75.41, age_sec: age },
+  });
+  const view = (windowAge: number, age: number | null, elapsed: number): DriverTrackingView =>
+    driverTrackingView(tracking(windowAge, age), elapsed);
+
+  it('classifies a present position with the exact 45 s and 300 s edges', () => {
+    assert.equal(view(100, 0, 0), 'live');
+    assert.equal(view(100, 44, 0), 'live');
+    assert.equal(view(100, 45, 0), 'stale');
+    assert.equal(view(100, 299, 0), 'stale');
+    assert.equal(view(100, 300, 0), 'hidden');
+    assert.equal(view(100, 30, 14), 'live');
+    assert.equal(view(100, 30, 15), 'stale');
+    assert.equal(view(100, 30, 269), 'stale');
+    assert.equal(view(100, 30, 270), 'hidden');
+  });
+
+  it('gives the grace period only while the position is null', () => {
+    assert.equal(view(0, null, 0), 'locating');
+    assert.equal(view(44, null, 0), 'locating');
+    assert.equal(view(45, null, 0), 'hidden');
+    assert.equal(view(10, null, 34), 'locating');
+    assert.equal(view(10, null, 35), 'hidden');
+    assert.equal(view(1000, null, 0), 'hidden');
+  });
+
+  it('parses an old server response with the defaults', () => {
+    const old = {
+      trip_request_id: 10,
+      status: 'assigned',
+      ui: 'driver_assigned',
+      service_type: 'taxi',
+      requested_company: null,
+      fare: {
+        base_fare: 8000,
+        night_surcharge: 0,
+        holiday_surcharge: 0,
+        total: 8000,
+        commission: 0,
+        currency: 'COP',
+      },
+      driver: null,
+      arrived_at: null,
+      free_cancellation_until: null,
+      updated_at: '2026-10-09T10:00:00Z',
+      server_time: '2026-10-09T10:00:00Z',
+    };
+    const parsed = TripRequestStatus.parse(old);
+    assert.equal(parsed.start_code, null);
+    assert.equal(parsed.start_code_state, 'not_applicable');
+    assert.equal(parsed.driver_tracking, null);
+  });
+
+  it('defaults the driver fields, the report result and the console fields', () => {
+    assert.deepEqual(ReportDriverLocationResult.parse({ ok: true }), {
+      ok: true,
+      location_sharing: null,
+    });
+    const view = DriverTripView.parse({
+      trip_request_id: 1,
+      assignment_id: 1,
+      status: 'assigned',
+      passenger: { name: 'Ana', contact_phone: null },
+      pickup_address: 'a',
+      dropoff_address: 'b',
+      fare: {
+        base_fare: 8000,
+        night_surcharge: 0,
+        holiday_surcharge: 0,
+        total: 8000,
+        commission: 0,
+        currency: 'COP',
+      },
+      arrived_at: null,
+      no_show_available_at: null,
+      cash_collected_at: null,
+    });
+    assert.equal(view.start_code_required, false);
+    assert.equal(view.start_attempts_remaining, null);
+    assert.equal(view.start_blocked, false);
+    assert.equal(view.pickup_location, null);
+    assert.equal(view.dropoff_location, null);
+    assert.equal(view.location_sharing, null);
+    assert.equal(OpsTripTimeline.shape.started_at.parse(undefined), null);
+    assert.equal(OpsQueueRow.shape.start_failed_attempts.parse(undefined), 0);
+    assert.equal(OpsTripDetail.shape.start_blocked_at.parse(undefined), null);
+  });
+});
+
+describe('location notice v3', () => {
+  it('is the current version and allows sharing', () => {
+    assert.equal(LOCATION_NOTICE_VERSION, 'location-notice-v3');
+    assert.equal(
+      (DRIVER_LOCATION_SHARING_NOTICE_VERSIONS as readonly string[]).includes(
+        LOCATION_NOTICE_VERSION,
+      ),
+      true,
+    );
+  });
+
+  it('carries no legal placeholders for either audience', () => {
+    assert.equal(hasLegalPlaceholders(canonicalLocationNoticeText('driver')), false);
+    assert.equal(hasLegalPlaceholders(canonicalLocationNoticeText('passenger')), false);
   });
 });

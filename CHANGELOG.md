@@ -10,6 +10,28 @@ guardarraíl 5: copia literal a `voyya-backend/packages/shared` y `voyya-mobile/
 > Las entradas 0.2.0 a 0.7.0 se **reconstruyeron el 2026-10-08** a partir de los ADRs dueños de cada contrato,
 > porque este archivo se quedó en el ciclo del viaje en curso. Donde el ADR no detalla el cambio, se dice.
 
+## [0.10.0] — 2026-10-09 · Llegada segura: código de inicio, seguimiento ligero y aviso v3 (sin etiquetar todavía)
+
+Origen: ADR-033 §7. Minor: **no rompe tipos** (todo campo nuevo es aditivo con `.default()`), pero cambia comportamiento: una app
+de conductor vieja recibe `START_CODE_REQUIRED` y `LOCATION_CONSENT_REQUIRED` en bucle con la v3. No hay usuarios reales (ADR-033 §7.4).
+
+### Añade
+- `trips.ts`: `START_CODE_LENGTH`, `START_CODE_MAX_FAILED_ATTEMPTS`, `StartCode`, `StartCodeState`, `DriverPosition`,
+  `DriverTracking`, `DriverTrackingView` y la función pura `driverTrackingView(tracking, elapsedSec)`.
+- `TripRequestStatus` gana `start_code` (nulo), `start_code_state` (`not_applicable`) y `driver_tracking` (nulo).
+- `TripErrorCode` gana `START_CODE_REQUIRED`, `START_CODE_INVALID` y `START_CODE_BLOCKED`; `TripError` gana `attempts_remaining`
+  (1 a 4) y `blocked_at`.
+- `driver.ts`: `StartTripDTO`, `DriverLocationSharing`, `ReportDriverLocationResult`; `DriverTripView` gana `start_code_required`,
+  `start_attempts_remaining`, `start_blocked`, `pickup_location`, `dropoff_location` y `location_sharing`.
+- `admin.ts`: `OpsQueueRow` y `OpsTripDetail` ganan `start_failed_attempts` y `start_blocked_at` (nunca el código);
+  `OpsTripTimeline` gana `started_at`.
+- `consent.ts`: `DRIVER_LOCATION_SHARING_NOTICE_VERSIONS`.
+
+### Cambia
+- `LOCATION_NOTICE_VERSION` pasa a `location-notice-v3`. `location-notice.ts` lleva los textos v3 de las dos audiencias del
+  Anexo A de la revisión de seguridad: **provisionales hasta el concepto legal**, sin marcadores y con "NIT en trámite". No se
+  registran en producción hasta que el dueño los dé por finales.
+
 ## [0.9.1] — 2026-10-09 · Hotfix F-02: detalle de PostgreSQL fuera de los logs y de Sentry (sin etiquetar todavía)
 
 Origen: ADR-033 §1.5 (C-2) y §8.0, paso 0. Patch: no cambia ningún tipo ni esquema; endurece el comportamiento de
