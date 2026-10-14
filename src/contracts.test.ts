@@ -20,6 +20,11 @@ import {
   ActivatableServiceType,
   ActiveServiceTypes,
   AdminErrorCode,
+  AuthError,
+  AuthErrorCode,
+  OTP_LENGTH,
+  OtpCode,
+  VerifyOtpDTO,
   AffiliationErrorCode,
   AffiliationMunicipalityListResponse,
   ApproveCompanyDTO,
@@ -771,5 +776,44 @@ describe('passenger push events', () => {
     assert.equal(new Set(names).size, names.length);
     assert.equal(TRIPS_EVENTS.TRIP_REQUEST_DRIVER_ARRIVED, 'trip_request.driver_arrived');
     assert.equal(ASSIGNMENT_EVENTS.SEARCH_EXHAUSTED, 'assignment.search_exhausted');
+  });
+});
+
+describe('OTP code', () => {
+  it('fixes the code length at six digits', () => {
+    assert.equal(OTP_LENGTH, 6);
+  });
+
+  it('accepts exactly OTP_LENGTH ASCII digits, leading zeros included', () => {
+    for (const code of ['000000', '012345', '999999']) {
+      assert.equal(OtpCode.safeParse(code).success, true, code);
+    }
+  });
+
+  it('rejects any other length, letters, spaces and non-ASCII digits', () => {
+    const invalid = ['', '1234', '12345', '1234567', '12345678', '12345a', ' 12345', '١٢٣٤٥٦'];
+    for (const code of invalid) {
+      assert.equal(OtpCode.safeParse(code).success, false, code);
+    }
+  });
+
+  it('makes a four-digit code an invalid verification body', () => {
+    const phone = '3001234567';
+    assert.equal(VerifyOtpDTO.safeParse({ phone, code: '1234' }).success, false);
+    assert.equal(VerifyOtpDTO.safeParse({ phone, code: '012345' }).success, true);
+  });
+
+  it('adds no error code: every issuance cap answers OTP_RATE_LIMIT with an exact wait', () => {
+    assert.deepEqual(
+      AuthErrorCode.options.filter((code) => code.startsWith('OTP_')),
+      ['OTP_INVALID', 'OTP_EXPIRED', 'OTP_MAX_ATTEMPTS', 'OTP_RATE_LIMIT'],
+    );
+    const dailyWait = {
+      code: 'OTP_RATE_LIMIT',
+      message: 'Demasiadas solicitudes de código, intenta más tarde',
+      retry_in_sec: 86_400,
+    };
+    assert.equal(AuthError.safeParse(dailyWait).success, true);
+    assert.equal(AuthError.safeParse({ ...dailyWait, retry_in_sec: 0 }).success, false);
   });
 });
