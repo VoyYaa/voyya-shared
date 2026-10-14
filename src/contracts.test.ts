@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  ANDROID_ASSIGNMENT_CHANNEL_ID,
+  ANDROID_TRIP_UPDATES_CHANNEL_ID,
+  ASSIGNMENT_EVENTS,
+  AssignmentCancelledByDriverEvent,
+  AssignmentSearchExhaustedEvent,
+  DriverAssignedEvent,
+  DriverPushData,
+  PASSENGER_PUSH_NOTIFICATION_TYPES,
+  PUSH_ENTITY_ID_MAX,
+  PUSH_NOTIFICATION_TYPES,
+  PassengerPushData,
+  PushNotificationData,
+  TRIPS_EVENTS,
+  TripRequestDriverArrivedEvent,
+  TripRequestNoDriverEvent,
   AcceptAssignmentResult,
   ActivatableServiceType,
   ActiveServiceTypes,
@@ -583,5 +598,178 @@ describe('location notice v3', () => {
   it('carries no legal placeholders for either audience', () => {
     assert.equal(hasLegalPlaceholders(canonicalLocationNoticeText('driver')), false);
     assert.equal(hasLegalPlaceholders(canonicalLocationNoticeText('passenger')), false);
+  });
+});
+
+describe('passenger push data', () => {
+  it('accepts every passenger type with a trip request id', () => {
+    for (const type of PASSENGER_PUSH_NOTIFICATION_TYPES) {
+      const parsed = PassengerPushData.parse({ type, trip_request_id: '42' });
+      assert.deepEqual(parsed, { type, trip_request_id: 42 });
+    }
+  });
+
+  it('keeps only the type and the trip request id', () => {
+    const parsed = PassengerPushData.parse({
+      type: PUSH_NOTIFICATION_TYPES.TRIP_DRIVER_ARRIVED,
+      trip_request_id: 7,
+      start_code: '4821',
+      start_code_state: 'active',
+      driver_name: 'Juan Pérez',
+      plate: 'ABC123',
+      phone: '3001234567',
+      pickup_address: 'Calle 20 con carrera 15',
+      position: { lat: 6.96, lng: -75.41 },
+    });
+    assert.deepEqual(Object.keys(parsed).sort(), ['trip_request_id', 'type']);
+  });
+
+  it('rejects a payload without trip request id or with an unknown type', () => {
+    assert.equal(
+      PassengerPushData.safeParse({ type: PUSH_NOTIFICATION_TYPES.TRIP_NO_DRIVER }).success,
+      false,
+    );
+    assert.equal(
+      PassengerPushData.safeParse({ type: 'trip_marketing', trip_request_id: 1 }).success,
+      false,
+    );
+    assert.equal(
+      PassengerPushData.safeParse({
+        type: PUSH_NOTIFICATION_TYPES.ASSIGNMENT_OFFER,
+        trip_request_id: 1,
+      }).success,
+      false,
+    );
+  });
+
+  it('bounds the trip request id to int4 and refuses booleans', () => {
+    const type = PUSH_NOTIFICATION_TYPES.TRIP_NO_DRIVER;
+    assert.equal(PUSH_ENTITY_ID_MAX, 2_147_483_647);
+    const highest = PassengerPushData.parse({ type, trip_request_id: '2147483647' });
+    assert.deepEqual(highest, { type, trip_request_id: PUSH_ENTITY_ID_MAX });
+    for (const trip_request_id of [
+      true,
+      false,
+      null,
+      '',
+      '-1',
+      '1.5',
+      '1e3',
+      ' 7',
+      '2147483648',
+      2_147_483_648,
+      0,
+      -3,
+      1.5,
+      Number.POSITIVE_INFINITY,
+    ]) {
+      assert.equal(PassengerPushData.safeParse({ type, trip_request_id }).success, false);
+    }
+  });
+
+  it('applies the same id bounds to the driver offer', () => {
+    const offer = {
+      type: PUSH_NOTIFICATION_TYPES.ASSIGNMENT_OFFER,
+      assignment_id: '9',
+      trip_request_id: '3',
+      expires_at: '2026-10-13T15:00:00.000Z',
+    };
+    assert.equal(DriverPushData.safeParse(offer).success, true);
+    assert.equal(DriverPushData.safeParse({ ...offer, assignment_id: true }).success, false);
+    assert.equal(
+      DriverPushData.safeParse({ ...offer, trip_request_id: '2147483648' }).success,
+      false,
+    );
+  });
+
+  it('keeps each audience out of the other union', () => {
+    const passenger = { type: PUSH_NOTIFICATION_TYPES.TRIP_DRIVER_ASSIGNED, trip_request_id: 3 };
+    const driver = {
+      type: PUSH_NOTIFICATION_TYPES.ASSIGNMENT_OFFER,
+      assignment_id: 9,
+      trip_request_id: 3,
+      expires_at: '2026-10-13T15:00:00.000Z',
+    };
+    assert.equal(DriverPushData.safeParse(passenger).success, false);
+    assert.equal(DriverPushData.safeParse(driver).success, true);
+    assert.equal(PushNotificationData.safeParse(passenger).success, true);
+    assert.equal(PushNotificationData.safeParse(driver).success, true);
+  });
+
+  it('declares unique types and distinct android channels', () => {
+    const all = Object.values(PUSH_NOTIFICATION_TYPES);
+    assert.equal(new Set(all).size, all.length);
+    assert.equal(
+      (PASSENGER_PUSH_NOTIFICATION_TYPES as readonly string[]).includes(
+        PUSH_NOTIFICATION_TYPES.ASSIGNMENT_OFFER,
+      ),
+      false,
+    );
+    assert.equal(PASSENGER_PUSH_NOTIFICATION_TYPES.length, all.length - 1);
+    assert.notEqual(ANDROID_TRIP_UPDATES_CHANNEL_ID, ANDROID_ASSIGNMENT_CHANNEL_ID);
+  });
+});
+
+describe('passenger push events', () => {
+  const occurredAt = '2026-10-13T15:00:00.000Z';
+
+  it('carries the passenger in every applied fact that notifies', () => {
+    const assigned = {
+      trip_request_id: 1,
+      assignment_id: 2,
+      driver_id: 3,
+      vehicle_id: 4,
+      company_id: 5,
+      occurred_at: occurredAt,
+    };
+    assert.equal(DriverAssignedEvent.safeParse(assigned).success, false);
+    assert.equal(DriverAssignedEvent.safeParse({ ...assigned, passenger_id: 6 }).success, true);
+
+    const cancelled = {
+      assignment_id: 2,
+      trip_request_id: 1,
+      driver_id: 3,
+      reason: 'Se pinchó una llanta',
+      trip_request_status: 'pending_assignment',
+      occurred_at: occurredAt,
+    };
+    assert.equal(AssignmentCancelledByDriverEvent.safeParse(cancelled).success, false);
+    assert.equal(
+      AssignmentCancelledByDriverEvent.safeParse({ ...cancelled, passenger_id: 6 }).success,
+      true,
+    );
+
+    const arrived = {
+      trip_request_id: 1,
+      driver_id: 3,
+      company_id: 5,
+      arrived_at: occurredAt,
+      occurred_at: occurredAt,
+    };
+    assert.equal(TripRequestDriverArrivedEvent.safeParse(arrived).success, false);
+    assert.equal(
+      TripRequestDriverArrivedEvent.safeParse({ ...arrived, passenger_id: 6 }).success,
+      true,
+    );
+
+    const noDriver = {
+      trip_request_id: 1,
+      attempts_made: 3,
+      final_radius_km: 4,
+      occurred_at: occurredAt,
+    };
+    assert.equal(TripRequestNoDriverEvent.safeParse(noDriver).success, false);
+    assert.equal(
+      TripRequestNoDriverEvent.safeParse({ ...noDriver, passenger_id: 6 }).success,
+      true,
+    );
+    assert.equal(AssignmentSearchExhaustedEvent.safeParse(noDriver).success, true);
+  });
+
+  it('names the new events without colliding with existing ones', () => {
+    const names = [...Object.values(TRIPS_EVENTS), ...Object.values(ASSIGNMENT_EVENTS)];
+    assert.equal(new Set(names).size, names.length);
+    assert.equal(TRIPS_EVENTS.TRIP_REQUEST_DRIVER_ARRIVED, 'trip_request.driver_arrived');
+    assert.equal(ASSIGNMENT_EVENTS.SEARCH_EXHAUSTED, 'assignment.search_exhausted');
   });
 });
