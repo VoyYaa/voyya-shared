@@ -10,6 +10,18 @@ guardarraíl 5: copia literal a `voyya-backend/packages/shared` y `voyya-mobile/
 > Las entradas 0.2.0 a 0.7.0 se **reconstruyeron el 2026-10-08** a partir de los ADRs dueños de cada contrato,
 > porque este archivo se quedó en el ciclo del viaje en curso. Donde el ADR no detalla el cambio, se dice.
 
+## [0.13.0] — 2026-11-19 · Cuentas de revisión para las tiendas (sin etiquetar todavía)
+
+Origen: ADR-037 §6 y `docs/specs/diseno-tecnico-cuentas-de-revision-tiendas.md` §6. Todo campo nuevo es aditivo con valor por defecto: no rompe tipos.
+
+### Añade
+- `demo.ts`: `DEMO_PLACES_MAX` (10), `DemoPlace` (`key`, `name`, coordenada) y `DemoSession` (`municipality_id`, `municipality_name`, `center`, `places`
+  con claves únicas).
+- `auth.ts`: `JwtAccessPayload` gana `demo` (`true` u omitido); `SessionUser` gana `demo_session` (`DemoSession` o `null`, por defecto `null`), que
+  heredan `SessionResponse` y `RefreshResponse`.
+- `affiliation.ts` y `service-config.ts`: `PlatformCompanyRow`, `PlatformCommissionRow` y `PlatformServiceConfigRow` ganan `is_demo` (por defecto `false`).
+- `index.ts` exporta `./contracts/demo`.
+
 ## [0.10.0] — 2026-10-09 · Llegada segura: código de inicio, seguimiento ligero y aviso v3 (sin etiquetar todavía)
 
 Origen: ADR-033 §7. Minor: **no rompe tipos** (todo campo nuevo es aditivo con `.default()`), pero cambia comportamiento: una app

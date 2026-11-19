@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DemoSession } from './demo';
 
 export const Role = z.enum([
   'passenger',
@@ -83,6 +84,7 @@ export const JwtAccessPayload = z.object({
   role: Role,
   company_id: z.number().int().positive().optional(),
   pin_change_required: z.literal(true).optional(),
+  demo: z.literal(true).optional(),
   type: z.literal('access'),
   iat: z.number().int().optional(),
   exp: z.number().int().optional(),
@@ -113,6 +115,7 @@ export const SessionUser = z.object({
   tenant: SessionTenant.nullable(),
   profile_complete: z.boolean(),
   pin_change_required: z.boolean().default(false),
+  demo_session: DemoSession.nullable().default(null),
 });
 export type SessionUser = z.infer<typeof SessionUser>;
 

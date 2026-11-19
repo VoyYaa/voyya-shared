@@ -171,6 +171,7 @@ export const PlatformCommissionRow = z.object({
   municipality_id: z.number().int().positive(),
   municipality_name: z.string(),
   commission: CompanyCommission.nullable(),
+  is_demo: z.boolean().default(false),
 });
 export type PlatformCommissionRow = z.infer<typeof PlatformCommissionRow>;
 
@@ -190,6 +191,7 @@ export const PlatformServiceConfigRow = z.object({
   active_company_count: z.number().int().nonnegative(),
   fare: MunicipalityFare.nullable(),
   operational_params: MunicipalityOperationalParams,
+  is_demo: z.boolean().default(false),
 });
 export type PlatformServiceConfigRow = z.infer<typeof PlatformServiceConfigRow>;
 

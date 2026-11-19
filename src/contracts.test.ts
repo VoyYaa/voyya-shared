@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  DEMO_PLACES_MAX,
+  DemoPlace,
+  DemoSession,
+  JwtAccessPayload,
+  PlatformCommissionRow,
+  PlatformCompanyRow,
+  PlatformServiceConfigRow,
+  SessionUser,
   ANDROID_ASSIGNMENT_CHANNEL_ID,
   ANDROID_TRIP_UPDATES_CHANNEL_ID,
   ASSIGNMENT_EVENTS,
@@ -815,5 +823,126 @@ describe('OTP code', () => {
     };
     assert.equal(AuthError.safeParse(dailyWait).success, true);
     assert.equal(AuthError.safeParse({ ...dailyWait, retry_in_sec: 0 }).success, false);
+  });
+});
+
+describe('review account demo contract', () => {
+  const demoPlace = (key: string) => ({ key, name: `Place ${key}`, lat: 6.96, lng: -75.41 });
+  const demoSession = (places: unknown[]) => ({
+    municipality_id: 1,
+    municipality_name: 'Yarumal',
+    center: { lat: 6.96, lng: -75.41 },
+    places,
+  });
+  const userBase = {
+    user_id: 1,
+    first_name: 'Ana',
+    last_name: 'Perez',
+    role: 'passenger',
+    tenant: null,
+    profile_complete: true,
+  };
+
+  it('DemoSession accepts 0 and 10 places and rejects the invalid shapes', () => {
+    const ten = Array.from({ length: DEMO_PLACES_MAX }, (_, i) => demoPlace(`place-${i}`));
+    assert.equal(DemoSession.safeParse(demoSession([])).success, true);
+    assert.equal(DemoSession.safeParse(demoSession(ten)).success, true);
+    assert.equal(
+      DemoSession.safeParse(demoSession([...ten, demoPlace('place-10')])).success,
+      false,
+    );
+    assert.equal(
+      DemoSession.safeParse(demoSession([{ ...demoPlace('far'), lat: 40 }])).success,
+      false,
+    );
+    assert.equal(DemoSession.safeParse(demoSession([demoPlace('Upper')])).success, false);
+    assert.equal(
+      DemoSession.safeParse(demoSession([demoPlace('same'), demoPlace('same')])).success,
+      false,
+    );
+    assert.equal(DemoPlace.safeParse(demoPlace('ok')).success, true);
+  });
+
+  it('SessionUser defaults demo_session to null and keeps a valid one', () => {
+    assert.equal(SessionUser.parse(userBase).demo_session, null);
+    const session = demoSession([demoPlace('park')]);
+    assert.deepEqual(
+      SessionUser.parse({ ...userBase, demo_session: session }).demo_session,
+      session,
+    );
+  });
+
+  it('JwtAccessPayload accepts demo true or absent and rejects demo false', () => {
+    const payload = { sub: 1, role: 'passenger', type: 'access' };
+    assert.equal(JwtAccessPayload.safeParse(payload).success, true);
+    assert.equal(JwtAccessPayload.safeParse({ ...payload, demo: true }).success, true);
+    assert.equal(JwtAccessPayload.safeParse({ ...payload, demo: false }).success, false);
+  });
+
+  it('the three platform rows default is_demo to false', () => {
+    const company = {
+      company_id: 1,
+      legal_name: 'Cootrayal',
+      tax_id: '900',
+      status: 'active',
+      municipality_id: 1,
+      municipality_name: 'Yarumal',
+      municipality_already_covered: true,
+      municipality_dane_code: '05887',
+      municipality_coverage_active: true,
+      display_name: 'Cootrayal',
+      service_types: ['taxi'],
+      coverage_pending_since: null,
+      vehicle_count: null,
+      contact_email: null,
+      submitted_at: '2026-11-19T00:00:00.000Z',
+    };
+    const commission = {
+      company_id: 1,
+      legal_name: 'Cootrayal',
+      display_name: 'Cootrayal',
+      municipality_id: 1,
+      municipality_name: 'Yarumal',
+      commission: null,
+    };
+    const serviceConfig = {
+      municipality_id: 1,
+      municipality_name: 'Yarumal',
+      department: 'Antioquia',
+      dane_code: '05887',
+      coverage_active: true,
+      service_type: 'taxi',
+      active_company_count: 1,
+      fare: null,
+      operational_params: {
+        operational_params_id: null,
+        municipality_id: 1,
+        service_type: 'taxi',
+        search_radius_km: 3,
+        expansion_radius_km: 5,
+        acceptance_timeout_sec: 30,
+        max_auto_retries: 3,
+        tiebreak_window_hours: 24,
+        location_stale_min: 5,
+        avg_speed_kmh: 25,
+        cancellation_window_min: 2,
+        no_show_grace_min: 5,
+        platform_default_keys: [],
+        origin: null,
+        origin_company_name: null,
+        valid_from: null,
+        created_by: null,
+      },
+    };
+    assert.equal(PlatformCompanyRow.parse(company).is_demo, false);
+    assert.equal(PlatformCommissionRow.parse(commission).is_demo, false);
+    assert.equal(PlatformServiceConfigRow.parse(serviceConfig).is_demo, false);
+    assert.equal(PlatformCompanyRow.parse({ ...company, is_demo: true }).is_demo, true);
+  });
+
+  it('index exports the demo contract', () => {
+    assert.equal(typeof DemoSession.parse, 'function');
+    assert.equal(typeof DemoPlace.parse, 'function');
+    assert.equal(DEMO_PLACES_MAX, 10);
   });
 });

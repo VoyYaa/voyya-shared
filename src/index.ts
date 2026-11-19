@@ -9,5 +9,6 @@ export * from './contracts/location-notice';
 export * from './contracts/documents';
 export * from './contracts/affiliation';
 export * from './contracts/push';
+export * from './contracts/demo';
 export * from './domain/trip-state-machine';
 export * from './domain/pii';

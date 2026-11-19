@@ -183,6 +183,7 @@ export const PlatformCompanyRow = z.object({
   vehicle_count: z.number().int().nullable(),
   contact_email: z.string().nullable(),
   submitted_at: z.string().datetime(),
+  is_demo: z.boolean().default(false),
 });
 export type PlatformCompanyRow = z.infer<typeof PlatformCompanyRow>;
 
