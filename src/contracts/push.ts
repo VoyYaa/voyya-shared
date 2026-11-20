@@ -35,8 +35,14 @@ export type PushNotificationType =
 export const PUSH_ENTITY_ID_MAX = 2_147_483_647;
 
 const PushEntityId = z
-  .union([z.string().regex(/^\d+$/), z.number()])
-  .pipe(z.coerce.number().int().positive().max(PUSH_ENTITY_ID_MAX));
+  .union([
+    z
+      .string()
+      .regex(/^\d+$/)
+      .transform((value) => Number(value)),
+    z.number(),
+  ])
+  .pipe(z.number().int().positive().max(PUSH_ENTITY_ID_MAX));
 
 export const AssignmentOfferPushData = z.object({
   type: z.literal(PUSH_NOTIFICATION_TYPES.ASSIGNMENT_OFFER),
