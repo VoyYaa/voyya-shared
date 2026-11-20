@@ -14,6 +14,10 @@ import {
   ASSIGNMENT_EVENTS,
   AssignmentCancelledByDriverEvent,
   AssignmentOfferPushData,
+  AdminLoginDTO,
+  CreateDriverDTO,
+  RequestCompanyDocumentsDTO,
+  SettlementReportQuery,
   AssignmentSearchExhaustedEvent,
   DriverAssignedEvent,
   DriverPushData,
@@ -1024,4 +1028,278 @@ describe('push entity id equivalence', () => {
       );
     });
   }
+});
+
+const ACCEPTED_EMAILS = [
+  'a@b.co',
+  'user@sub.domain.co',
+  'A@B.CO',
+  'a+tag@b.co',
+  'a@b.c.d.e.co',
+  'a@xn--80ak6aa92e.com',
+  'a@b.corporation',
+];
+const REJECTED_EMAILS = [
+  'a..b@voyya.co',
+  '.a@voyya.co',
+  'a.@voyya.co',
+  'a@voyya..co',
+  'a@voyya.co.',
+  'a@.voyya.co',
+  'user@[1.2.3.4]',
+  'a@b_c.co',
+  'a@b.c',
+  'a@b.co1',
+  'a b@c.co',
+  'a,b@c.co',
+  '"a b"@c.co',
+  'ñ@voyya.co',
+  'a@ñ.co',
+  'test@localhost',
+  'a@@b.co',
+  '@b.co',
+  'a@',
+  'a',
+  '',
+  'VoyYa <no-reply@voyya.co>',
+];
+const ACCEPTED_DATETIMES = [
+  '2026-01-01T00:00:00Z',
+  '2026-01-01T00:00:00.123Z',
+  '2026-01-01T00:00:00.1Z',
+  '2026-01-01T00:00:00.123456Z',
+];
+const REJECTED_DATETIMES = [
+  '2026-01-01T00:00:00+02:00',
+  '2026-01-01T00:00:00-05:00',
+  '2026-01-01T00:00:00+0200',
+  '2026-01-01T00:00:00.123+00:00',
+  '2026-01-01T00:00:00',
+  '2026-01-01T00:00',
+  '2026-01-01',
+  '2026-01-01 00:00:00Z',
+  '2026-02-30T00:00:00Z',
+  '2026-01-01T24:00:00Z',
+  '2026-13-01T00:00:00Z',
+  '2026-01-01T00:00:00z',
+  '2026-01-01t00:00:00Z',
+  '2026-01-01T00:00:00.Z',
+  ' 2026-01-01T00:00:00Z',
+  '2026-01-01T00:00:00Z ',
+  '',
+  'x',
+];
+const TIME_WITHOUT_SECONDS = '2026-01-01T00:00Z';
+
+const validDriver = {
+  first_name: 'Juan',
+  last_name: 'Pérez',
+  national_id: '1234567890',
+  phone: '3001234567',
+  vehicle: { plate: 'ABC123', model: 'Spark' },
+  documents: [
+    {
+      type: 'license',
+      storage_key: 'staging/2026/01/01/abcdef01.pdf',
+      expires_at: '2030-01-01',
+    },
+  ],
+};
+
+const validApplication = {
+  legal_name: 'Cooperativa de Prueba',
+  tax_id: '900123456-7',
+  legal_form: 'cooperative',
+  municipality_id: 1,
+  vehicle_count: 5,
+  contact_first_name: 'Ana',
+  contact_last_name: 'Pérez',
+  contact_email: 'ana@example.com',
+  contact_phone: '3001234567',
+  documents: [{ type: 'chamber_of_commerce', storage_key: 'staging/2026/01/01/abcdef01.pdf' }],
+};
+
+const arrivedEvent = {
+  trip_request_id: 1,
+  passenger_id: 2,
+  driver_id: 3,
+  company_id: 4,
+  arrived_at: '2026-01-01T00:00:00.000Z',
+  occurred_at: '2026-01-01T00:00:00.000Z',
+};
+
+describe('emails and time limits behave the same across Zod versions (ADR-039, P-Z3)', () => {
+  const emailSchemas = [
+    [
+      'AdminLoginDTO',
+      (email: string) => AdminLoginDTO.safeParse({ email, password: 'longenough1' }),
+    ],
+    ['CreateDriverDTO', (email: string) => CreateDriverDTO.safeParse({ ...validDriver, email })],
+    [
+      'CreateAffiliationApplicationDTO',
+      (email: string) =>
+        CreateAffiliationApplicationDTO.safeParse({ ...validApplication, contact_email: email }),
+    ],
+  ] as const;
+
+  for (const [name, run] of emailSchemas) {
+    it(`${name} accepts well-formed emails`, () => {
+      for (const email of ACCEPTED_EMAILS) {
+        assert.equal(run(email).success, true, email);
+      }
+    });
+
+    it(`${name} rejects malformed emails`, () => {
+      for (const email of REJECTED_EMAILS) {
+        assert.equal(run(email).success, false, email);
+      }
+    });
+  }
+
+  it('trims the email before validating it', () => {
+    assert.equal(
+      AdminLoginDTO.parse({ email: ' a@b.co ', password: 'longenough1' }).email,
+      'a@b.co',
+    );
+    assert.equal(
+      CreateAffiliationApplicationDTO.parse({ ...validApplication, contact_email: ' A@B.CO ' })
+        .contact_email,
+      'a@b.co',
+    );
+  });
+
+  it('caps the length of an email at 254 characters', () => {
+    const long = `${'a'.repeat(250)}@b.co`;
+    assert.equal(AdminLoginDTO.safeParse({ email: long, password: 'longenough1' }).success, false);
+  });
+
+  it('accepts a full date and time in UTC with or without milliseconds', () => {
+    for (const value of ACCEPTED_DATETIMES) {
+      const parsed = TripRequestDriverArrivedEvent.safeParse({
+        ...arrivedEvent,
+        occurred_at: value,
+        arrived_at: value,
+      });
+      assert.equal(parsed.success, true, value);
+    }
+  });
+
+  it('rejects offsets, missing time, impossible dates and loose formats', () => {
+    for (const value of REJECTED_DATETIMES) {
+      assert.equal(
+        TripRequestDriverArrivedEvent.safeParse({ ...arrivedEvent, occurred_at: value }).success,
+        false,
+        value,
+      );
+    }
+  });
+
+  it('accepts the time without seconds that Zod 3 lets through (Zod 4 rejects it)', () => {
+    assert.equal(
+      TripRequestDriverArrivedEvent.safeParse({
+        ...arrivedEvent,
+        occurred_at: TIME_WITHOUT_SECONDS,
+      }).success,
+      true,
+    );
+  });
+
+  it('keeps every date-only input of the API as a calendar date', () => {
+    assert.equal(
+      SettlementReportQuery.safeParse({ from: '2026-01-05', to: '2026-01-11' }).success,
+      true,
+    );
+    assert.equal(
+      SettlementReportQuery.safeParse({ from: '2026-01-05T00:00Z', to: '2026-01-11' }).success,
+      false,
+    );
+  });
+});
+
+describe('array inputs keep their caps (ADR-039, P-Z5, fixed part)', () => {
+  const documents = (count: number) =>
+    Array.from({ length: count }, () => validDriver.documents[0]);
+  const applicationDocuments = (count: number) =>
+    Array.from({ length: count }, () => validApplication.documents[0]);
+
+  function maximumOf(issue: { code: string } | undefined): number | undefined {
+    return issue && 'maximum' in issue ? Number(issue.maximum) : undefined;
+  }
+
+  it('CreateDriverDTO.documents holds at most 4', () => {
+    assert.equal(
+      CreateDriverDTO.safeParse({ ...validDriver, documents: documents(4) }).success,
+      true,
+    );
+    const tooMany = CreateDriverDTO.safeParse({ ...validDriver, documents: documents(5) });
+    assert.equal(tooMany.success, false);
+    if (tooMany.success) return;
+    const issue = tooMany.error.issues[0];
+    assert.equal(issue?.code, 'too_big');
+    assert.equal(maximumOf(issue), 4);
+    assert.deepEqual(issue?.path, ['documents']);
+  });
+
+  it('CreateAffiliationApplicationDTO.documents holds at most 4', () => {
+    assert.equal(
+      CreateAffiliationApplicationDTO.safeParse({
+        ...validApplication,
+        documents: applicationDocuments(4),
+      }).success,
+      true,
+    );
+    const tooMany = CreateAffiliationApplicationDTO.safeParse({
+      ...validApplication,
+      documents: applicationDocuments(5),
+    });
+    assert.equal(tooMany.success, false);
+    if (tooMany.success) return;
+    const issue = tooMany.error.issues[0];
+    assert.equal(issue?.code, 'too_big');
+    assert.equal(maximumOf(issue), 4);
+    assert.deepEqual(issue?.path, ['documents']);
+  });
+
+  it('CreateAffiliationApplicationDTO.service_types holds at most 3', () => {
+    const tooMany = CreateAffiliationApplicationDTO.safeParse({
+      ...validApplication,
+      service_types: ['taxi', 'comfort', 'delivery', 'taxi'],
+    });
+    assert.equal(tooMany.success, false);
+    if (tooMany.success) return;
+    const issue = tooMany.error.issues.find((candidate) => candidate.code === 'too_big');
+    assert.equal(maximumOf(issue), 3);
+    assert.deepEqual(issue?.path, ['service_types']);
+    assert.equal(
+      CreateAffiliationApplicationDTO.safeParse({
+        ...validApplication,
+        service_types: ['taxi', 'comfort', 'delivery'],
+      }).success,
+      true,
+    );
+  });
+
+  it('RequestCompanyDocumentsDTO.document_types holds at most 4', () => {
+    const note = 'Faltan documentos del expediente';
+    const types = [
+      'chamber_of_commerce',
+      'tax_registry',
+      'transport_authorization',
+      'liability_insurance',
+    ];
+    assert.equal(
+      RequestCompanyDocumentsDTO.safeParse({ document_types: types, note }).success,
+      true,
+    );
+    const tooMany = RequestCompanyDocumentsDTO.safeParse({
+      document_types: [...types, 'tax_registry'],
+      note,
+    });
+    assert.equal(tooMany.success, false);
+    if (tooMany.success) return;
+    const issue = tooMany.error.issues[0];
+    assert.equal(issue?.code, 'too_big');
+    assert.equal(maximumOf(issue), 4);
+    assert.deepEqual(issue?.path, ['document_types']);
+  });
 });
