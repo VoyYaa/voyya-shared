@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { z } from 'zod';
+import * as contracts from './index';
 import {
   DEMO_PLACES_MAX,
   DemoPlace,
@@ -326,7 +328,9 @@ describe('public name and service types in affiliation', () => {
   });
 
   it('rejects control, format, bidirectional and zero-width characters in a public name', () => {
-    const codePoints = [0x202e, 0x200b, 0x200d, 0x2060, 0xfeff, 0x0000, 0x000a, 0x0009, 0x200f, 0x2066, 0x180e];
+    const codePoints = [
+      0x202e, 0x200b, 0x200d, 0x2060, 0xfeff, 0x0000, 0x000a, 0x0009, 0x200f, 0x2066, 0x180e,
+    ];
     for (const codePoint of codePoints) {
       const name = `Taxis${String.fromCodePoint(codePoint)}Yarumal`;
       assert.equal(CompanyPublicName.safeParse(name).success, false, codePoint.toString(16));
@@ -341,7 +345,10 @@ describe('public name and service types in affiliation', () => {
   });
 
   it('keeps accents, the enye and inner spaces in a public name', () => {
-    assert.equal(CompanyPublicName.safeParse(`Taxis Ni${String.fromCodePoint(0x00f1)}o & Cia.`).success, true);
+    assert.equal(
+      CompanyPublicName.safeParse(`Taxis Ni${String.fromCodePoint(0x00f1)}o & Cia.`).success,
+      true,
+    );
   });
 
   it('makes public_name optional and defaults service_types to taxi', () => {
@@ -1194,13 +1201,13 @@ describe('emails and time limits behave the same across Zod versions (ADR-039, P
     }
   });
 
-  it('accepts the time without seconds that Zod 3 lets through (Zod 4 rejects it)', () => {
+  it('rejects the time without seconds that Zod 3 let through', () => {
     assert.equal(
       TripRequestDriverArrivedEvent.safeParse({
         ...arrivedEvent,
         occurred_at: TIME_WITHOUT_SECONDS,
       }).success,
-      true,
+      false,
     );
   });
 
@@ -1301,5 +1308,60 @@ describe('array inputs keep their caps (ADR-039, P-Z5, fixed part)', () => {
     assert.equal(issue?.code, 'too_big');
     assert.equal(maximumOf(issue), 4);
     assert.deepEqual(issue?.path, ['document_types']);
+  });
+});
+
+describe('every input schema bounds its containers (ADR-039, P-Z5, generic part)', () => {
+  const EXTRA_INPUT_SCHEMAS: string[] = [];
+
+  const inputSchemas: Array<[string, z.ZodType]> = [];
+  for (const [name, value] of Object.entries(contracts as Record<string, unknown>)) {
+    const isInput = /(DTO|Query)$/.test(name) || EXTRA_INPUT_SCHEMAS.includes(name);
+    if (isInput && value instanceof z.ZodType) inputSchemas.push([name, value]);
+  }
+
+  type JsonNode = { [key: string]: unknown };
+
+  function unboundedContainers(node: unknown, path: string): string[] {
+    if (Array.isArray(node)) {
+      return node.flatMap((child, index) => unboundedContainers(child, `${path}[${index}]`));
+    }
+    if (typeof node !== 'object' || node === null) return [];
+    const record = node as JsonNode;
+    const found: string[] = [];
+    if (record.type === 'array' && record.maxItems === undefined) found.push(`${path} (array)`);
+    const additional = record.additionalProperties;
+    if (
+      typeof additional === 'object' &&
+      additional !== null &&
+      Object.keys(additional).length > 0 &&
+      record.maxProperties === undefined
+    ) {
+      found.push(`${path} (open object)`);
+    }
+    for (const [key, child] of Object.entries(record)) {
+      found.push(...unboundedContainers(child, `${path}.${key}`));
+    }
+    return found;
+  }
+
+  it('finds the input schemas by naming convention', () => {
+    assert.ok(inputSchemas.length >= 40, String(inputSchemas.length));
+  });
+
+  it('converts every input schema to JSON Schema without throwing', () => {
+    for (const [name, schema] of inputSchemas) {
+      assert.doesNotThrow(
+        () => z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }),
+        name,
+      );
+    }
+  });
+
+  it('gives every array and open object of every input schema a cap', () => {
+    for (const [name, schema] of inputSchemas) {
+      const json = z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' });
+      assert.deepEqual(unboundedContainers(json, name), [], name);
+    }
   });
 });
