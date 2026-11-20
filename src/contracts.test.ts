@@ -13,6 +13,7 @@ import {
   ANDROID_TRIP_UPDATES_CHANNEL_ID,
   ASSIGNMENT_EVENTS,
   AssignmentCancelledByDriverEvent,
+  AssignmentOfferPushData,
   AssignmentSearchExhaustedEvent,
   DriverAssignedEvent,
   DriverPushData,
@@ -945,4 +946,82 @@ describe('review account demo contract', () => {
     assert.equal(typeof DemoPlace.parse, 'function');
     assert.equal(DEMO_PLACES_MAX, 10);
   });
+});
+
+describe('push entity id equivalence', () => {
+  const absent = Symbol('absent');
+  const accepted: Array<[string, unknown, number]> = [
+    ["'1'", '1', 1],
+    ["'0123'", '0123', 123],
+    ["'2147483647'", '2147483647', 2_147_483_647],
+    ['1', 1, 1],
+    ['2147483647', 2_147_483_647, 2_147_483_647],
+  ];
+  const rejected: Array<[string, unknown]> = [
+    ["'2147483648'", '2147483648'],
+    ["'0'", '0'],
+    ["'-1'", '-1'],
+    ["'1.5'", '1.5'],
+    ["''", ''],
+    ["' 1'", ' 1'],
+    ["'1e3'", '1e3'],
+    ['400 digits', '9'.repeat(400)],
+    ['0', 0],
+    ['-1', -1],
+    ['1.5', 1.5],
+    ['2147483648', 2_147_483_648],
+    ['null', null],
+    ['true', true],
+    ['absent', absent],
+  ];
+  const withValue = (key: string, value: unknown, base: Record<string, unknown>) => {
+    const input: Record<string, unknown> = { ...base };
+    if (value === absent) delete input[key];
+    else input[key] = value;
+    return input;
+  };
+  const offerBase = {
+    type: PUSH_NOTIFICATION_TYPES.ASSIGNMENT_OFFER,
+    assignment_id: 1,
+    trip_request_id: 1,
+    expires_at: '2026-01-01T00:00:00.000Z',
+  };
+  const passengerBase = { type: PUSH_NOTIFICATION_TYPES.TRIP_NO_DRIVER, trip_request_id: 1 };
+
+  for (const [label, value, expected] of accepted) {
+    it(`accepts ${label} as ${expected}`, () => {
+      const offer = AssignmentOfferPushData.parse(withValue('assignment_id', value, offerBase));
+      assert.equal(offer.assignment_id, expected);
+      assert.equal(typeof offer.assignment_id, 'number');
+      const passenger = PassengerPushData.parse(withValue('trip_request_id', value, passengerBase));
+      assert.equal(passenger.trip_request_id, expected);
+      const union = PushNotificationData.parse(withValue('trip_request_id', value, passengerBase));
+      assert.equal(union.trip_request_id, expected);
+    });
+  }
+
+  for (const [label, value] of rejected) {
+    it(`rejects ${label}`, () => {
+      assert.equal(
+        AssignmentOfferPushData.safeParse(withValue('assignment_id', value, offerBase)).success,
+        false,
+      );
+      assert.equal(
+        AssignmentOfferPushData.safeParse(withValue('trip_request_id', value, offerBase)).success,
+        false,
+      );
+      assert.equal(
+        PassengerPushData.safeParse(withValue('trip_request_id', value, passengerBase)).success,
+        false,
+      );
+      assert.equal(
+        DriverPushData.safeParse(withValue('assignment_id', value, offerBase)).success,
+        false,
+      );
+      assert.equal(
+        PushNotificationData.safeParse(withValue('trip_request_id', value, passengerBase)).success,
+        false,
+      );
+    });
+  }
 });
